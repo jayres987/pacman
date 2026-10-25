@@ -22,6 +22,7 @@ env:
 jobs:
   build:
     runs-on: [self-hosted, linux]
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
@@ -46,19 +47,20 @@ jobs:
         run: docker push "$IMAGE:$TAG"
 
       # MANIFESTS_DEPLOY_KEY is the private half of a write deploy key on the
-      # manifests repo. SSH goes over port 443 (ssh.github.com), which lab
-      # networks let out when port 22 is closed.
+      # manifests repo. SSH uses port 22: the HPOC network lets it out, but
+      # passes only HTTPS on 443, so ssh.github.com:443 hangs there.
       - name: Promote to NKP
+        timeout-minutes: 3
         env:
           DEPLOY_KEY: ${{ secrets.MANIFESTS_DEPLOY_KEY }}
         run: |
           key="$RUNNER_TEMP/deploy_key"
           (umask 077; printf '%s\n' "$DEPLOY_KEY" > "$key")
           trap 'rm -f "$key"' EXIT
-          echo "[ssh.github.com]:443 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl" > "$RUNNER_TEMP/known_hosts"
-          export GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes -o UserKnownHostsFile=$RUNNER_TEMP/known_hosts"
+          echo "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl" > "$RUNNER_TEMP/known_hosts"
+          export GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=15 -o UserKnownHostsFile=$RUNNER_TEMP/known_hosts"
           rm -rf "$RUNNER_TEMP/manifests"
-          git clone --depth 1 "ssh://git@ssh.github.com:443/${MANIFESTS_REPO}.git" "$RUNNER_TEMP/manifests"
+          git clone --depth 1 "git@github.com:${MANIFESTS_REPO}.git" "$RUNNER_TEMP/manifests"
           cd "$RUNNER_TEMP/manifests"
           sed -i -E "s#^([[:space:]]*newName:).*#\1 ${IMAGE}#; s#^([[:space:]]*)(digest|newTag):.*#\1newTag: \"${TAG}\"#" nkp/kustomization.yaml
           git diff --stat
