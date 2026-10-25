@@ -15,9 +15,11 @@ concurrency:
 permissions:
   contents: read
 
+# The same file works in every attendee's fork: the image and the manifests
+# repo are named after the GitHub account that owns the fork.
 env:
-  IMAGE: jaregistry.ntnxlab.local/apps/pacman
-  MANIFESTS_REPO: jayres987/pacman-for-k8s
+  REGISTRY: jaregistry.ntnxlab.local/apps
+  MANIFESTS_REPO: ${{ github.repository_owner }}/pacman-for-k8s
 
 jobs:
   build:
@@ -26,8 +28,11 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
-      - name: Pick the tag
-        run: echo "TAG=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+      - name: Pick the image name and tag
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          echo "IMAGE=$REGISTRY/pacman-$owner" >> "$GITHUB_ENV"
+          echo "TAG=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
 
       - name: Lint and unit tests
         run: |
